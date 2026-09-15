@@ -404,6 +404,37 @@ inputs". The seam is real. What is not shipped is a policy to put in it: there a
 documented validation layers or interception points between inference output and motor
 commands. This is that policy.
 
+## How this actually runs (no Studio patch)
+
+Studio's plugin system registers **robots only** (`application/backend/src/plugins`:
+`PluginRobot`, `role: follower/leader`). There is no supported extension point for
+governing actions, and the only seam is `self._policy = source` inside
+`StudioActionSource._set_policy`. Patching that means running a modified Studio, which
+gets lost on the next reinstall.
+
+There is no need to. Studio **exports a trained policy to a directory on disk**, and the
+code that turns that directory into a running policy is small and public
+(`config_builder.py: policy_source_from_fragment`). So:
+
+1. Use Studio, unmodified, for setup, teleoperation, recording and training.
+2. Studio exports the policy to `models/<id>/exports/<backend>/`.
+3. Run it with `run_gated.py`, which builds the policy exactly the way Studio does and
+   puts the gate in the loop.
+
+```bash
+python sorter/run_gated.py \
+    --export-dir ~/models/<model-id>/exports/openvino \
+    --follower-port /dev/ttyACM0 \
+    --device NPU
+
+# the same part, the same model, ungoverned:
+python sorter/run_gated.py ... --protection off
+```
+
+Nothing is forked and nothing is pulled back onto the Studio install. It also gives the
+demo something Studio's UI cannot: a protection on/off switch, so the same part can be
+shown reaching the customer bin and then being held.
+
 ## Running it
 
 ```bash
