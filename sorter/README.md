@@ -44,6 +44,30 @@ This is the same argument the restaurant demo on `main` makes with a different t
 **a claim proposes, only a proof establishes.** A classifier's output is a claim, not a
 warrant to act.
 
+### What is not new here, and what is
+
+Abstaining when unsure is **well established**. It is called the reject option or
+selective prediction, and it has [a 2024 survey in *Machine
+Learning*](https://link.springer.com/article/10.1007/s10994-024-06534-x). The two checks
+used below are textbook categories from it: low confidence is *ambiguity rejection*, and
+an unfamiliar part is *novelty rejection*. Nothing about deferring to a human is invented
+here, and claiming otherwise would be wrong.
+
+What is different is **where the decision lives and what it governs**:
+
+|  | selective prediction | this gate |
+|---|---|---|
+| lives | inside the classifier | at the boundary before the actuators |
+| governs | whether to answer | whether a claim becomes a motion |
+| scope | the model's own score | the score, plus whether conditions match training |
+| applies to | a model you trained | any model, including one you did not |
+
+A reject option improves the quality of the answers a model gives. This governs whether
+an answer is permitted to move a robot. In a pipeline of three models, where ACT grasps,
+Anomalib judges and SmolVLA places, the thing that needs governing is not any one
+model's confidence but the seam where a judgement becomes an act. Intel's framework has
+that seam and ships no policy for it.
+
 ## Where the gate sits
 
 ```
@@ -380,20 +404,46 @@ inputs". The seam is real. What is not shipped is a policy to put in it: there a
 documented validation layers or interception points between inference output and motor
 commands. This is that policy.
 
+## Running it
+
+```bash
+# the experiment, on the reference distribution
+python sorter/run_experiment.py
+
+# the experiment, on your model's real scores (score,truth per line)
+python sorter/run_experiment.py scores.csv
+
+# the tests
+python -m pytest sorter/ -q
+```
+
 ## Status
 
-- `sort_gate.py` — scope derivation and the allow/hold decision. Done, tested.
+**Done and tested (17 tests passing):**
+
+- `sort_gate.py` — derives what the evidence supports, and the allow/hold decision.
 - `gated_source.py` — wraps Studio's `PolicySource`, matching the real
-  `update(robot_state, camera_frames, step)` interface read from Studio's backend.
-  Tested against a stub source. **This is the one to use.**
+  `update(robot_state, camera_frames, step)` interface read from Studio's backend at
+  `application/backend/src/runtime/action_source.py`. **This is the one to use.**
+- `experiment.py` / `run_experiment.py` — measures what the gate changes.
 - `gated_policy.py` — an earlier version written against a `select_action(obs)` loop
   described in a blog post. Studio does not work that way; kept only for a project that
   drives a policy directly rather than through Studio's runtime.
-- Not yet done, and both need the trained model to exist first:
-  - `evidence` is not wired to Anomalib. It expects
-    `{verdict, confidence, calibrated, seen_before}`; the real output format has to be
-    read off the model.
-  - `CONFIDENCE_FLOOR = 0.75` is a placeholder. It should be set from the score
-    distribution of the actual trained model, not guessed.
-  - Import paths are taken from the documentation and have not been run against the
-    installed package.
+
+**Not done, and honest about why:**
+
+- **`evidence` is not wired to Anomalib.** It expects
+  `{verdict, confidence, calibrated, seen_before}`. The real output format has to be read
+  off the trained model, which does not exist yet.
+- **`CONFIDENCE_FLOOR = 0.75` is a placeholder.** It must come from the model's own score
+  distribution, using the sweep above. Guessing it would undo the point of measuring.
+- **The numbers above are from a reference distribution, not from real parts.** They show
+  the harness works and what shape the answer takes. They are not a result.
+- **The import path and the wrap point have not been run against the installed package.**
+  Studio's own type check (`policy_loader.py:155`) runs before the source is returned, so
+  wrapping the returned value should be fine, but that is reasoning from source, not a
+  test on the machine.
+
+**What is needed to turn this into a result:** a trained Anomalib model and a held-out
+test set that keeps **scores, not just labels**. Without the scores there is no way to
+set the floor and no experiment to run.
