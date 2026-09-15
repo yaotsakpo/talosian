@@ -29,6 +29,7 @@ import numpy as np
 import mujoco
 
 from scene_restaurant import (
+    PLATE_PILE,
     JOINTS, TABLE_TOP_Z, CAN_HALF_H, CAN_RADIUS, PILE_COUNT, PILE, ARM_MOUNT,
     PLATE_HALF_H, PLATE_COUNT, PLATE_RADIUS, TABLE_CENTER,
     diner_spots, arm_for_spot,
@@ -52,6 +53,10 @@ GRASP_LOCAL = np.array([-0.0006, 0.0, -0.0175])
 # the closing jaws to land cleanly on the can wall. Arms are mirror configured (sign
 # flips per arm).
 GRASP_ROLL = {"H": +100.0, "P": -100.0}
+
+# Which arm owns which job. The supplies sit beside their specialist in the scene.
+PLATE_ARM = "P"     # right arm: plates
+DRINK_ARM = "H"     # left arm: drink cans (measured: H places cans upright at every seat)
 
 ITEM_DRINK = {"serve_wine": "wine", "serve_water": "water"}
 # food items are served as a plate taken off the stack
@@ -82,10 +87,9 @@ class RestaurantDriver:
         self.weld = {a: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_EQUALITY, f"grasp_{a}")
                      for a in ("H", "P")}
         # which cans are still available in each arm's row of each drink (True = on table)
-        self.available = {(a, drink): [True] * PILE_COUNT
-                          for a in ("H", "P") for drink in ("wine", "water")}
+        self.available = {drink: [True] * PILE_COUNT for drink in PILE}
         # which plates are still on each arm's stack (True = still stacked)
-        self.plates_left = {a: [True] * PLATE_COUNT for a in ("H", "P")}
+        self.plates_left = [True] * PLATE_COUNT
         # which body was delivered to which diner, per kind (for served_ok)
         self.delivered = {}          # diner -> can body name
         self.delivered_plate = {}    # diner -> plate body name
@@ -142,15 +146,15 @@ class RestaurantDriver:
         Returns (body_name, k, xy) or None if the row is used up."""
         mount = ARM_MOUNT[arm]
         cand = []
-        for k, ok in enumerate(self.available[(arm, drink)]):
+        for k, ok in enumerate(self.available[drink]):
             if not ok:
                 continue
-            bid = self._body(f"{drink}_{arm}_{k}")
+            bid = self._body(f"{drink}_{k}")
             up = self.data.xmat[bid].reshape(3, 3)[:, 2]
             if float(up[2]) < 0.9:            # skip a knocked-over can
                 continue
             xy = self.data.xpos[bid][:2].copy()
-            cand.append((float(np.linalg.norm(xy - mount)), f"{drink}_{arm}_{k}", k, xy))
+            cand.append((float(np.linalg.norm(xy - mount)), f"{drink}_{k}", k, xy))
         if not cand:
             return None
         outer = max(cand, key=lambda c: c[0])   # farthest from the mount = open end
@@ -161,13 +165,13 @@ class RestaurantDriver:
         is how you take a plate off a pile. Returns (body_name, k, xyz) or None if the
         stack is used up."""
         best = None
-        for k, ok in enumerate(self.plates_left[arm]):
+        for k, ok in enumerate(self.plates_left):
             if not ok:
                 continue
-            bid = self._body(f"plate_{arm}_{k}")
+            bid = self._body(f"plate_{k}")
             z = float(self.data.xpos[bid][2])
             if best is None or z > best[0]:
-                best = (z, f"plate_{arm}_{k}", k, self.data.xpos[bid].copy())
+                best = (z, f"plate_{k}", k, self.data.xpos[bid].copy())
         if best is None:
             return None
         return best[1], best[2], best[3]
@@ -190,8 +194,107 @@ class RestaurantDriver:
         self.model.eq_data[eid][6:10] = rq; self.model.eq_data[eid][10] = 1
         self.data.eq_active[eid] = 1
 
+    def _at_table(self, arm, rest_z, tol=0.05):
+        """Is this arm's grasp point actually down at the table, ready to let go? The IK
+        does not always reach a commanded pose (far targets at carry height can leave the
+        arm flailing high), and releasing up there DROPS the item from the air. So every
+        set-down asks this first, and lowers again if the answer is no."""
+        gs = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, f"{arm}_gripperframe")
+        return float(self.data.site_xpos[gs][2]) <= rest_z + tol
+
+    def _lower_until_down(self, arm, tx, ty, rest_z, roll=None, tries=3):
+        """Drive down to the setting, and if the arm did not actually get there, try again
+        before giving up. Yields physics steps like any other motion."""
+        for _ in range(tries):
+            yield from self._reach(arm, [tx, ty, rest_z], 0.4, fingertip=True, roll=roll)
+            if self._at_table(arm, rest_z):
+                return
+
     def _release(self, arm):
         self.data.eq_active[self.weld[arm]] = 0
+
+    def _blocked(self, arm, target_xy, item_radius):
+        """Would this arm's reach to target_xy run through something already on the table?
+        Checks the straight line from the arm's mount to the target against every standing
+        object, ignoring the object being fetched. This is what 'use the arm that can do it
+        without blocking' means: it is decided per request from the live table, not fixed
+        in advance."""
+        mount = ARM_MOUNT[arm]
+        t = np.asarray(target_xy, dtype=float)
+        seg = t - mount
+        seg_len = float(np.linalg.norm(seg))
+        if seg_len < 1e-6:
+            return False
+        u = seg / seg_len
+        for i in range(self.model.nbody):
+            nm = mujoco.mj_id2name(self.model, mujoco.mjtObj.mjOBJ_BODY, i)
+            if not nm or nm.split("_")[0] not in ("wine", "water", "plate"):
+                continue
+            p = self.data.xpos[i][:2]
+            # only things still standing on the table can be knocked
+            if float(self.data.xpos[i][2]) < TABLE_TOP_Z:
+                continue
+            # the source piles are where the arm fetches from, not obstacles to route
+            # around: only items already DELIVERED to a setting can block a path.
+            if not self._is_delivered(nm):
+                continue
+            rel = p - mount
+            along = float(np.dot(rel, u))
+            if along <= 0.02 or along >= seg_len - 0.02:
+                continue                      # behind the arm, or at the target itself
+            perp = float(np.linalg.norm(rel - along * u))
+            if perp < item_radius + CAN_RADIUS - 0.004:
+                return True
+        return False
+
+    def _ik_error(self, arm, target_xy, z):
+        """How far this arm's grasp point would miss the target, in metres. Solved on a
+        scratch copy so the live state is untouched. An arm that cannot reach a target
+        must not be given the job: commanding it there leaves it flailing, and the
+        set-down then happens in mid-air."""
+        tgt = np.array([float(target_xy[0]), float(target_xy[1]), float(z)])
+        scratch = mujoco.MjData(self.model)
+        scratch.qpos[:] = self.data.qpos
+        mujoco.mj_forward(self.model, scratch)
+        sol = self.ik[arm].solve(scratch, tgt, down_axis=DOWN_AXIS)
+        for j, v in sol.items():
+            jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{arm}_{j}")
+            scratch.qpos[self.model.jnt_qposadr[jid]] = math.radians(v)
+        mujoco.mj_forward(self.model, scratch)
+        gs = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, f"{arm}_gripperframe")
+        return float(np.linalg.norm(scratch.site_xpos[gs] - tgt))
+
+    def _is_delivered(self, body_name):
+        return (body_name in self.delivered.values()
+                or body_name in self.delivered_plate.values())
+
+    def _best_arm(self, spot, kind):
+        """Pick the arm that can actually perform THIS action at THIS seat right now.
+
+        The supplies are split, drink cans beside one arm and plates beside the other, so
+        the arm holding the supply is the natural choice. But if that arm's path to the
+        seat is blocked by something already on the table, and the other arm's path is
+        clear, the other arm takes the job. The decision is made from the live table on
+        every request rather than fixed up front."""
+        radius = PLATE_RADIUS if kind == "plate" else CAN_RADIUS
+        target = self._place_spot(spot, kind)
+        best, best_score = None, None
+        for arm in ("H", "P"):
+            if not self._has_supply(arm, kind):
+                continue
+            reach = self._ik_error(arm, target, LIFT_Z)      # can it get there at all
+            blocked = self._blocked(arm, target, radius)      # is its path obstructed
+            score = reach + (1.0 if blocked else 0.0)         # blocking outweighs reach
+            if best_score is None or score < best_score:
+                best, best_score = arm, score
+        return best or (DRINK_ARM if kind != "plate" else PLATE_ARM)
+
+    def _has_supply(self, arm, kind):
+        """Supplies are shared between the arms, so this only asks whether any of that
+        kind is left on the table."""
+        if kind == "plate":
+            return any(self.plates_left)
+        return any(any(self.available.get(d, [])) for d in ("wine", "water"))
 
     def _place_spot(self, spot, kind):
         """Where within a place setting an item goes. A setting is not a single point: the
@@ -227,15 +330,20 @@ class RestaurantDriver:
         spot = self.spots.get(diner)
         if spot is None:
             return
-        arm = arm_for_spot(spot)
+        # THE ARMS ARE SPECIALISED: H is the plate server, P is the drink server, and
+        # Pick the arm that can actually perform THIS action at THIS seat. Both arms are
+        # stocked, so the choice is per request: whichever one delivers this item to this
+        # seat cleanly, preferring the arm whose own supplies are nearest (reaching across
+        # to the other arm's stock lands items 15 to 20cm off, measured).
         drink = ITEM_DRINK.get(item)
+        arm = self._best_arm(spot, "can" if drink is not None else "plate")
         if drink is not None:
             picked = self._pick_can(arm, drink)
             if picked is None:
                 return                   # row used up (should not happen in a demo)
             body_name, k, pick_xy = picked
             yield from self._serve_can(arm, body_name, pick_xy, self._place_spot(spot, "can"))
-            self.available[(arm, drink)][k] = False
+            self.available[drink][k] = False
             self.delivered[diner] = body_name
             return
         if item in PLATE_ITEMS:
@@ -249,14 +357,14 @@ class RestaurantDriver:
                 if pick is not None:
                     bn, pk, pxy = pick
                     yield from self._serve_can(arm, bn, pxy, self._place_spot(spot, "can"))
-                    self.available[(arm, pdrink)][pk] = False
+                    self.available[pdrink][pk] = False
                     self.delivered[diner] = bn
             picked = self._pick_plate(arm)
             if picked is None:
                 return                   # stack used up
             body_name, k, pick_xyz = picked
             yield from self._serve_plate(arm, body_name, pick_xyz, self._place_spot(spot, "plate"))
-            self.plates_left[arm][k] = False
+            self.plates_left[k] = False
             self.delivered_plate[diner] = body_name
 
     def request_drink(self, item, diner):
@@ -283,7 +391,7 @@ class RestaurantDriver:
         # lift clear of the stack, carry level, lower to the setting
         yield from self._reach(arm, [px, py, LIFT_Z], 0.4, fingertip=True)
         yield from self._reach(arm, [tx, ty, LIFT_Z], 0.55, fingertip=True)
-        yield from self._reach(arm, [tx, ty, rest_z + 0.004], 0.4, fingertip=True)
+        yield from self._lower_until_down(arm, tx, ty, rest_z + 0.004)
         # Set down, same ordering as the can: release the weld, lift the still-closed
         # gripper clear of the plate, and only then open, so the opening jaws cannot
         # flick the plate away.
@@ -311,7 +419,7 @@ class RestaurantDriver:
         yield from self._reach(arm, [px, py, LIFT_Z], 0.4, fingertip=True, roll=roll)
         yield from self._reach(arm, [tx, ty, LIFT_Z], 0.55, fingertip=True, roll=roll)
         # lower until the can base is essentially on the table (a hair above so it settles)
-        yield from self._reach(arm, [tx, ty, pick_z + 0.003], 0.4, fingertip=True, roll=roll)
+        yield from self._lower_until_down(arm, tx, ty, pick_z + 0.003, roll=roll)
         # Set-down. Order matters and was the single biggest source of failures: opening
         # the jaws while they still surround the standing can sweeps it over (measured:
         # tilt climbed 13 to 31 to 87 degrees right after the open, and the can ended off

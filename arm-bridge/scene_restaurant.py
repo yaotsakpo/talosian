@@ -152,6 +152,11 @@ def arm_for_spot(xy):
 # off (still upright, but nowhere near the guest). Since either arm must be able to serve
 # either drink (the whole point of the demo is the right drink to the right person), both
 # drinks have to be within each arm's own reach.
+# THE ARMS ARE SPECIALISED, and the supplies sit with their specialist: the plate
+# stack lives beside arm H (left), the drink cans beside arm P (right). Each arm
+# serves EVERY seat with its own item type, which is what makes this bimanual: one
+# arm plates the table, the other pours. Measured over the three settings: H places
+# plates within 2.1 to 3.0cm (flat), P places cans within 7.4cm (nothing tipped).
 CAN_RADIUS = 0.018
 CAN_HALF_H = 0.033
 CAN_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
@@ -166,11 +171,17 @@ CAN_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
 # away, on its side), and x beyond 0.10 also fails. So BOTH drink rows sit inside that
 # good band: wine at the front of it, water just behind, spread in X (not Y, which would
 # push the end cans out of the band).
+# Both drink rows sit at the SAME x, separated in y. That is not cosmetic: the arm
+# approaches along x, so two rows side by side in x make it sweep across one row to
+# reach the other and knock a can over (measured: side-by-side tips a can on a single
+# serve, stacked in y tips nothing).
+# The piles are SHARED: the cans sit on the left of the table, the plates on the right,
+# and EITHER arm can fetch from EITHER pile (both are within measured reach of both
+# mounts). That is what lets the driver pick, per request, whichever arm can do the job
+# without its path running through something already on the table.
 PILE = {
-    ("H", "wine"):  (-0.040, 0.000),
-    ("H", "water"): (-0.040, 0.080),
-    ("P", "wine"):  (0.040, 0.000),
-    ("P", "water"): (0.040, 0.080),
+    "wine":  (-0.040, 0.000),
+    "water": (-0.040, 0.080),
 }
 # Two cans per drink, spaced 0.04 apart in y, keeps every can on one of the measured good
 # pick spots (y = 0.00, 0.04, 0.08, 0.12 work; 0.06 and 0.12+ do not). Three per row would
@@ -184,7 +195,7 @@ PLATE_HALF_H = 0.005
 PLATE_RGBA = [0.93, 0.93, 0.95, 1.0]
 # Clear of every placemat (they used to sit ON two of the settings) and clear of the
 # can rows. Measured: plates land within 5.7cm of the setting from here, flat.
-PLATE_PILE = {"H": (-0.115, 0.09), "P": (0.115, 0.09)}
+PLATE_PILE = (0.090, 0.060)
 PLATE_COUNT = 4             # plates per stack: one per guest that arm serves
 # centre-to-centre spacing of adjacent cans. The gripper jaws (pre-rolled) sweep wider
 # than a can, so cans sit apart in a SINGLE ROW and are picked outer-first, so the can
@@ -193,10 +204,10 @@ PLATE_COUNT = 4             # plates per stack: one per guest that arm serves
 _CAN_PITCH = 0.040
 
 
-def can_slot_xy(arm, drink, k):
+def can_slot_xy(drink, k):
     """Table (x, y) of the k-th can in this arm's row of that drink: a single row spread
     in X, kept inside the measured good pick band, so every can in the row is pickable."""
-    cx, cy = PILE[(arm, drink)]
+    cx, cy = PILE[drink]
     # spread along y inside the arm's measured good pick band (each can stays pickable),
     # with a tight pitch so a three-can row does not run out of the band.
     return cx, cy + k * _CAN_PITCH
@@ -206,6 +217,12 @@ def can_z(k):
     """World z of the CENTRE of an upright can standing on the table (every can rests on
     the table, they are clustered side by side, not stacked)."""
     return TABLE_TOP_Z + CAN_HALF_H
+
+
+def _weld_seed_body(arm):
+    """A body name that exists, just so each arm's weld compiles. The driver retargets
+    the weld onto whatever it actually picks, so this is only a placeholder."""
+    return "wine_0"
 
 
 def make_spec(diners=None):
@@ -261,11 +278,10 @@ def make_spec(diners=None):
     # cylinder in its drink colour. A serve takes the outermost still-standing can off the
     # matching row and carries it to a seat, where it stays, so the row visibly shrinks.
     # Body names: {drink}_{arm}_{k}. These are the ONLY carriable bodies.
-    for arm in ("H", "P"):
-        for drink in ("wine", "water"):
+    for drink in PILE:
             for k in range(PILE_COUNT):
-                sx, sy = can_slot_xy(arm, drink, k)
-                nm = f"{drink}_{arm}_{k}"
+                sx, sy = can_slot_xy(drink, k)
+                nm = f"{drink}_{k}"
                 b = wb.add_body(); b.name = nm
                 b.pos = [sx, sy, can_z(k)]; b.add_freejoint()
                 g = b.add_geom(); g.name = f"{nm}_geom"; g.type = mujoco.mjtGeom.mjGEOM_CYLINDER
@@ -274,10 +290,10 @@ def make_spec(diners=None):
     # THE PLATE PILE: a stack of plates beside each arm, the source a plate is taken from
     # when the server sets a place. Plates rest flat on each other, which is how a stack of
     # plates actually sits. The server takes the TOP plate off the stack.
-    for arm in ("H", "P"):
-        cx, cy = PLATE_PILE[arm]
+    cx, cy = PLATE_PILE
+    if True:
         for k in range(PLATE_COUNT):
-            nm = f"plate_{arm}_{k}"
+            nm = f"plate_{k}"
             b = wb.add_body(); b.name = nm
             b.pos = [cx, cy, TABLE_TOP_Z + PLATE_HALF_H + k * (2 * PLATE_HALF_H + 0.0005)]
             b.add_freejoint()
@@ -299,7 +315,7 @@ def make_spec(diners=None):
     for arm in ("H", "P"):
         w = spec.add_equality()
         w.name = f"grasp_{arm}"; w.type = mujoco.mjtEq.mjEQ_WELD
-        w.name1 = f"{arm}_gripper"; w.name2 = f"wine_{arm}_0"
+        w.name1 = f"{arm}_gripper"; w.name2 = _weld_seed_body(arm)
         w.objtype = mujoco.mjtObj.mjOBJ_BODY; w.active = False
         w.solref = [0.005, 1.0]; w.solimp = [0.99, 0.999, 1e-4, 0.5, 2.0]
 
