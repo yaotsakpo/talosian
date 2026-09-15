@@ -1,0 +1,10 @@
+nncf==3.3.0
+numpy==2.2.6
+onnx==1.22.0
+onnx-ir==1.0.0
+onnxscript==0.7.2
+opencv-python-headless==5.0.0.93
+openvino==2026.3.1
+openvino-telemetry==2025.2.0
+pillow==12.3.0
+torch==2.14.0

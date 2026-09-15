@@ -141,3 +141,77 @@ is what the container delivers.
   clean-input accuracy for free, and the low training loss came from the model, not
   the principle. We keep those claims separate.
 - The verified expert reaches 10/10; the learned policy 85%. We report both.
+
+---
+
+## Quick start
+
+Two environments: a light one for the simulator, and one for training and
+OpenVINO. Only the first is needed to run the demo.
+
+```bash
+# 1. Fetch the SO-101 robot model (sparse checkout, ~28MB, not vendored here)
+./scripts/fetch_assets.sh
+
+# 2. Simulator environment
+python3 -m venv arm-bridge/.venv
+./arm-bridge/.venv/bin/pip install -r requirements.txt
+
+# 3. Run the demo (MuJoCo viewer + dashboard)
+export GROQ_API_KEY=...        # for the trust gate's reasoning
+./run.sh
+```
+
+`run.sh` opens the MuJoCo window and serves the dashboard on
+<http://localhost:8777>. On macOS the viewer needs `mjpython`, which ships with
+the `mujoco` wheel and is what `run.sh` uses.
+
+### Training and OpenVINO (optional)
+
+```bash
+python3 -m venv arm-bridge/.venv-ml
+./arm-bridge/.venv-ml/bin/pip install -r requirements-ml.txt
+./arm-bridge/.venv-ml/bin/python arm-bridge/benchmark_intel.py
+```
+
+Pinned to **OpenVINO 2026.3**, the version on Intel's hackathon image. The
+quantized policy is committed at `arm-bridge/serve_policy/policy_int8.{xml,bin}`
+so the benchmark runs without retraining.
+
+### Reproducing the numbers
+
+```bash
+# trust gate decisions (needs GROQ_API_KEY)
+./arm-bridge/.venv/bin/python -c "from agent import adjudicate; ..."
+
+# gate on vs off, across seeds
+./arm-bridge/.venv-ml/bin/python arm-bridge/experiment_gate.py
+```
+
+---
+
+## What is verified, and what is not
+
+Being precise about this, because a demo that overclaims is worse than one that
+does less:
+
+**Measured:**
+- The trust gate decides correctly on the five cases that matter: a minor asking
+  for wine, a minor asking in disguised wording ("the drink in the dark red
+  can"), an adult asking for wine, a plain water request, and a request with no
+  valid proof. The disguised-wording case is the one that shows this is
+  reasoning over an authority scope rather than keyword matching.
+- A held request produces **no arm motion**. The bridge queues an arm job only
+  on a serve decision, inside the gate, so this is enforced rather than left to
+  the caller.
+- Serving drink-then-plate finishes clean in 11 of 12 randomised runs of a full
+  three-guest table.
+
+**Known limits:**
+- Serving plate-then-drink is unreliable (2 of 12). Reaching a tall can in past
+  an already-placed plate disturbs the setting. The driver therefore lays the
+  drink first.
+- The seat ring holds three settings. Those are the positions where both a plate
+  and a drink were measured to arrive upright; positions behind the arms are
+  where the servers stand, as at a real table.
+- The policy is trained in simulation only. No real SO-101 hardware in the loop.
