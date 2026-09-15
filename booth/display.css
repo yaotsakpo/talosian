@@ -1,0 +1,43 @@
+/* Readable floor for a booth display; metadata stays secondary without microtype. */
+.brand-tag,.protection-label,.protection-label small,.header-state #arm-state,
+.warning strong,.warning .mono,.eyebrow,.live-label,.simulation,.section-number,
+.scope-preview,.label-note,.footnote,.count-pill,.commander-role,.seed-note,
+.principle p span,.stream-label,.trust-banner .eyebrow,.gate-brackets,.gate-path,
+.legend,.event time,.verdict,.proof,.sample-tag,.voice-title>span,.voice-title button,
+.feed-bottom,.feed-bottom .mono,.scope-summary,.locked-note,.text-button,
+.adversary-label,.payload,.attack-hint,.attack-result,footer,footer>span:first-child,
+footer .mono {font-size:.75rem}
+.header-state,.workspace-meta,.compact-label,.adversary label,.action,
+.attack-button,.feed-toolbar,.commander-name,.primary {font-size:.875rem}
+.description,.event p,.voice-output p {font-size:1rem}
+.feed-heading .description,.adversary .description,.trust-banner p {font-size:.875rem}
+.event-top {row-gap:9px}
+.event-who {max-width:45%;overflow-wrap:anywhere}
+.gate-path {flex-wrap:wrap;row-gap:9px;letter-spacing:-.3px}
+.gate-brackets {display:none}
+.proof {line-height:1.7}
+.feed-bottom,footer {flex-wrap:wrap;line-height:1.7}
+.action {min-height:79px}
+.payload>div {flex-wrap:wrap}
+.payload b {max-width:100%;overflow-wrap:anywhere;white-space:normal}
+.footnote {line-height:1.7}
+.feed {height:390px}
+@media(min-width:1600px){.feed{height:460px}}
+@media(max-width:720px){
+  .simulation {max-width:135px;font-size:.75rem}
+  .workspace-heading {gap:12px;flex-wrap:wrap}
+  .workspace-meta {align-items:flex-start;justify-items:start}
+  .simulation {text-align:left;max-width:none}
+  .feed-toolbar {align-items:flex-start;flex-wrap:wrap}
+  .legend {gap:12px}
+  .event-who {max-width:44%}
+  .event time {margin-left:auto}
+  .event .verdict {font-size:.75rem}
+  .gate-path {font-size:.75rem;justify-content:flex-start;gap:5px}
+  .event-action {font-size:.75rem}
+  .feed {height:420px}
+  .access form {display:block}
+  .scope-preview {display:flex}
+  .access form .label-note {display:block;margin-left:0}
+  .adversary .payload,.attack-hint {font-size:.75rem}
+}

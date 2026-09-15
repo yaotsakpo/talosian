@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#101416">
+  <meta name="description" content="Talosian: a trust layer for autonomous robots. Named for Talos, the bronze guardian of Greek myth and the first automaton, whose purpose was protection. Identity is not authority.">
+  <title>Talosian · Physical AI Trust Layer</title>
+  <link rel="icon" href="icon.svg" type="image/svg+xml"><link rel="stylesheet" href="styles.css"><link rel="stylesheet" href="display.css">
+  <script src="engine.js" defer></script><script src="app.js" type="module"></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="#" aria-label="Talosian home"><span>Talosian<span class="brand-tag">Physical AI trust layer</span></span></a>
+  <div class="header-state"><span class="status-dot"></span><span>SERVER <b id="arm-state">IDLE</b></span><span class="divider"></span><span><b id="commander-count">2</b> seats</span></div>
+  <button class="add-seat-nav" id="join-again" aria-label="Seat another guest"><span data-icon="user-plus"></span><span>Seat a guest</span></button>
+  <button class="face-toggle-nav" id="face-nav" role="switch" aria-checked="false" aria-label="Enable face recognition"><span data-icon="crosshair"></span><span>Face recognition <small id="face-nav-state">off</small></span><span class="switch-track sm"><span></span></span></button>
+  <button class="protection" id="protection" role="switch" aria-checked="true" aria-label="Owner control: protection"><span data-icon="shield"></span><span class="protection-label">PROTECTION <small id="protection-caption">Continuity enforced</small></span><strong id="protection-value">ON</strong><span class="switch-track"><span></span></span></button>
+</header>
+<div id="warning" class="warning" hidden><span data-icon="alert"></span><strong>PROTECTION DISARMED</strong><span>Identity is being trusted without proof. Forged commands can execute.</span><span class="mono">OWNER OVERRIDE</span></div>
+<main>
+  <div class="workspace-heading"><div><span class="eyebrow">OPERATIONS / ARM–01</span><h1>Trust console<span class="live-label">LIVE DEMO</span></h1></div><div class="workspace-meta"><span>AI Infra Summit <span class="muted">/</span> Intel Physical AI</span><span class="simulation"><span data-icon="flask"></span>Real continuity crypto · arm simulated</span></div></div>
+  <div class="workspace">
+    <aside class="left-column">
+      <section class="panel commanders"><div class="panel-title"><h2>Tables</h2><span id="roster-count" class="count-pill">02</span></div>
+        <div class="roster" id="roster"></div>
+        <div class="seed-note">Each person has their own table, and a scope: age, allergies, and a continuity proof.</div>
+        <hr class="panel-rule">
+        <label for="active-commander" class="compact-label">You are</label>
+        <select id="active-commander"></select>
+        <label for="request-text" class="compact-label">Ask the server, in your own words</label>
+        <div class="request-row"><input id="request-text" type="text" placeholder="e.g. bring me a glass of wine" autocomplete="off" maxlength="120"><button id="request-send" class="primary">Ask <span data-icon="arrow"></span></button></div>
+        <div class="mic-row"><button id="mic" class="mic-button" aria-pressed="false" aria-label="Speak a request"><span data-icon="audio"></span> Speak</button><span id="mic-status" class="mic-status"></span></div>
+        <p class="request-hint">Ask for <b>yourself</b> and the server can prove it's you. Ask for <b>another guest</b> and you're posing as them, no proof, so it's held. And it never serves wine to a minor, any wording.</p>
+        <div class="how-note"><span data-icon="fingerprint"></span><p>Identity is the proof, not the name. A second guest who shares a name can't inherit the first's authority, they'd need the first's continuity proof, which they don't have.</p></div>
+      </section>
+      <div class="principle"><span data-icon="fingerprint"></span><p>Identity is not authority.<br><span>A perfect imitation still isn't permission.</span></p></div>
+    </aside>
+    <section class="panel feed-panel" aria-labelledby="feed-title">
+      <div class="feed-heading"><div><h2 id="feed-title">Live command feed <span class="live-dot"></span></h2><p class="description">Every request. Every decision. In the open.</p></div><button id="serve-table" class="serve-btn"><span data-icon="arrow"></span> Serve the table</button></div>
+      <div class="trust-banner" id="trust-banner"><span class="trust-icon" data-icon="shield-check"></span><div><span class="eyebrow" id="trust-kicker">TRUST GATE ACTIVE</span><h3 id="trust-title">Continuity intact.</h3><p id="trust-description">Every command must prove it belongs.</p></div><span class="gate-brackets">[ <span id="gate-value">SECURE</span> ]</span></div>
+      <div class="gate-path"><span>COMMAND</span><span>→</span><span id="continuity-step">CONTINUITY</span><span>→</span><span>SCOPE</span><span>→</span><span>EXECUTOR</span></div>
+      <div class="feed-toolbar"><span><span id="event-count">0</span> events <span class="muted">/ newest first</span></span><div class="legend"><span class="legend-act">SERVED</span><span class="legend-held">HELD</span><span class="legend-attack">FORGED</span></div></div>
+      <div id="feed" class="feed" role="log" aria-label="Command verdicts" aria-live="polite" aria-relevant="additions"></div>
+      <div class="voice-output"><div class="voice-title"><span><span data-icon="audio"></span> ARM VOICE</span><button id="sound" aria-pressed="true" aria-label="Disable spoken responses">Sound on <span data-icon="volume"></span></button></div><p id="voice-text" aria-live="polite">“Ready when you are. Who's in command?”</p></div>
+      <div class="feed-bottom"><span class="mono">HMAC CONTINUITY · REAL PROOFS</span><span>Shared executor <span class="muted">/</span> ARM–01</span></div>
+    </section>
+  </div>
+  <footer><span>TALOSIAN <span class="muted">/</span> PHYSICAL AI TRUST LAYER</span><span>Same attack. One variable. <b>Proof.</b></span><span class="mono">REAL CONTINUITY CRYPTO · v0.1</span></footer>
+</main>
+<div id="face-modal" class="face-modal" hidden>
+  <div class="face-modal-card">
+    <div class="face-modal-head"><h2>Register a face</h2><button id="face-close" class="face-modal-x" aria-label="Close">&times;</button></div>
+    <p class="description">The camera says <em>who</em> you look like. It is identity, never authority, a recognized face still cannot authorize a command without a continuity proof. Nothing leaves this device.</p>
+    <div class="face-stage"><video id="face-video" playsinline muted></video><div id="face-overlay" class="face-overlay">starting camera…</div></div>
+    <label for="face-commander" class="compact-label">Register this face as</label>
+    <select id="face-commander"></select>
+    <div class="face-modal-actions"><button id="face-enroll" class="primary" disabled>Register face <span data-icon="user-plus"></span></button><button id="face-done" class="text-button">Done, close</button></div>
+    <p class="mic-note" id="face-verdict">A face proposes an identity. Only the continuity proof establishes authority.</p>
+  </div>
+</div>
+
+<!-- WELCOME / onboarding: name+age -> allergies -> menu (scope-enforced) -> camera -> seated.
+     Uses the existing design system (tokens + .face-modal component + .primary etc). -->
+<div id="welcome" class="onb">
+  <div class="onb-card">
+    <div class="onb-head"><span class="eyebrow">TALOSIAN · THE TABLE</span><div class="onb-head-right"><span class="onb-steplabel" id="onb-steplabel">Step 1 of 4</span><button class="onb-close" id="onb-close" aria-label="Skip, just watch the table">&times;</button></div></div>
+
+    <div class="onb-step" data-step="1">
+      <h2>Welcome to the table</h2>
+      <p class="description">The server brings each guest only what their seat allows. Let's set up yours.</p>
+      <label for="w-name">Your name</label>
+      <input id="w-name" type="text" placeholder="e.g. Sarah" maxlength="40" autocomplete="given-name">
+      <label>Are you 18 or older?</label>
+      <div class="onb-choice"><button class="onb-opt" data-age="adult">Yes, I'm an adult</button><button class="onb-opt" data-age="minor">No, I'm under 18</button></div>
+      <p class="onb-err" id="onb-err1" hidden></p>
+      <div class="onb-nav"><span></span><button class="primary onb-continue" data-next="allergies">Continue <span data-icon="arrow"></span></button></div>
+    </div>
+
+    <div class="onb-step" data-step="2" hidden>
+      <h2>Any allergies?</h2>
+      <p class="description">The server will never bring these to your seat, whatever's requested.</p>
+      <div class="onb-choice onb-wrap">
+        <button class="onb-opt onb-tog" data-allergy="shellfish">Shellfish</button>
+        <button class="onb-opt onb-tog" data-allergy="nuts">Nuts</button>
+        <button class="onb-opt" data-allergy="none">No allergies</button>
+      </div>
+      <div class="onb-nav"><button class="text-button" data-back>Back</button><button class="primary onb-continue" data-next="menu">Continue <span data-icon="arrow"></span></button></div>
+    </div>
+
+    <div class="onb-step" data-step="3" hidden>
+      <h2>Menu</h2>
+      <p class="description">Pick a drink and a dish. Anything outside your scope is locked.</p>
+      <div class="onb-menu"><span class="onb-menu-label">Drinks</span><div class="onb-items" id="w-drinks"></div></div>
+      <div class="onb-menu"><span class="onb-menu-label">Dishes</span><div class="onb-items" id="w-dishes"></div></div>
+      <div class="onb-nav"><button class="text-button" data-back>Back</button><button class="primary onb-continue" data-next="camera">Continue <span data-icon="arrow"></span></button></div>
+    </div>
+
+    <div class="onb-step" data-step="4" hidden>
+      <h2>Let the server recognize you?</h2>
+      <p class="description">Optional. A face adds a second factor, so a stranger can't act as you. It never replaces the proof, and nothing leaves this device.</p>
+      <div class="onb-choice"><button class="onb-opt" data-camera="yes">Yes, recognize me</button><button class="onb-opt" data-camera="no">No thanks, seat me</button></div>
+      <div class="onb-nav"><button class="text-button" data-back>Back</button></div>
+    </div>
+
+    <div class="onb-dots"><span data-dot="1"></span><span data-dot="2"></span><span data-dot="3"></span><span data-dot="4"></span></div>
+  </div>
+</div>
+</body></html>
