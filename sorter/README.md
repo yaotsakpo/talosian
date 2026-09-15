@@ -59,7 +59,39 @@ supplied. This is that policy.
 
 ## How it attaches to Physical AI Studio
 
-No fork and no patched framework. The OpenVINO Physical AI runtime is assembled as:
+Studio runs a trained policy with a plain loop:
+
+```python
+from physicalai.inference import InferenceModel
+policy = InferenceModel("./policy")
+obs, info = env.reset()
+while not done:
+    action = policy.select_action(obs)          # <- the boundary
+    obs, reward, terminated, truncated, info = env.step(action)
+```
+
+Whatever `select_action` returns becomes what the motors do, and nothing in between
+asks whether the claim behind that action earned the authority to move a part into a
+customer's bin. `GatedPolicy` wraps the policy and answers that question at the
+boundary, exposing the same interface, so the loop does not change:
+
+```python
+policy = GatedPolicy(InferenceModel("./policy"), evidence=anomaly_reading)
+```
+
+That is the whole integration. No fork of Studio, no patched framework.
+
+### The other deployment path
+
+Intel also ships a separate deployment framework (`openvinotoolkit/physicalai`) with a
+`RobotRuntime` that takes a pluggable `action_source`. `gated_source.py` is the same gate
+shaped for that seam, for a project deploying through the runtime rather than Studio's
+loop. The two files are the same policy wearing the interface each framework expects.
+
+<details>
+<summary>The runtime version</summary>
+
+The OpenVINO Physical AI runtime is assembled as:
 
 ```python
 runtime = RobotRuntime(
@@ -89,14 +121,26 @@ runtime = RobotRuntime(
 
 A withheld action is not a modified action. The arm is simply not commanded to sort.
 
+</details>
+
 Intel describes the framework as having "future-ready hooks for action clamps and
 emergency stops, guarding against unsafe movements caused by model errors or unexpected
-inputs". The seam is real and pluggable. What the framework does not ship is a policy to
-put in it: there are no documented validation layers or interception points between
-inference output and motor commands. This is that policy.
+inputs". The seam is real. What is not shipped is a policy to put in it: there are no
+documented validation layers or interception points between inference output and motor
+commands. This is that policy.
 
 ## Status
 
 - `sort_gate.py` — scope derivation and the allow/hold decision. Done, tested.
-- `gated_source.py` — the ActionSource wrapper. Done, tested against a stub policy.
-- Wiring `evidence` to Anomalib's real output, and running it on the arm — next.
+- `gated_policy.py` — wrapper for **Physical AI Studio's** `select_action` loop. Done,
+  tested against a stub policy. This is the one to use with Studio.
+- `gated_source.py` — the same gate shaped for the separate OpenVINO Physical AI
+  runtime's `action_source` seam.
+- Not yet done, and both need the trained model to exist first:
+  - `evidence` is not wired to Anomalib. It expects
+    `{verdict, confidence, calibrated, seen_before}`; the real output format has to be
+    read off the model.
+  - `CONFIDENCE_FLOOR = 0.75` is a placeholder. It should be set from the score
+    distribution of the actual trained model, not guessed.
+  - Import paths are taken from the documentation and have not been run against the
+    installed package.
