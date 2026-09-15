@@ -57,7 +57,46 @@ clamps and emergency stops, guarding against unsafe movements caused by model er
 unexpected inputs". The hook is acknowledged; the policy that belongs in it is not
 supplied. This is that policy.
 
+## How it attaches to Physical AI Studio
+
+No fork and no patched framework. The OpenVINO Physical AI runtime is assembled as:
+
+```python
+runtime = RobotRuntime(
+    fps=30,
+    robot=SO101(port="/dev/ttyACM0"),
+    action_source=PolicySource(model=InferenceModel("./exports/act_policy")),
+    cameras={...},
+)
+```
+
+`action_source` is a documented extension point: anything implementing the ActionSource
+protocol. The runtime pulls an action from it each tick and hands it to the robot's
+`send_action`. That seam, between what the policy wants and what the motors do, is
+where authority should be established, so that is where the gate stands:
+
+```python
+runtime = RobotRuntime(
+    fps=30,
+    robot=SO101(port="/dev/ttyACM0"),
+    action_source=GatedSource(
+        inner=PolicySource(model=InferenceModel("./exports/act_policy")),
+        evidence=anomaly_reading,          # verdict + confidence from Anomalib
+    ),
+    cameras={...},
+)
+```
+
+A withheld action is not a modified action. The arm is simply not commanded to sort.
+
+Intel describes the framework as having "future-ready hooks for action clamps and
+emergency stops, guarding against unsafe movements caused by model errors or unexpected
+inputs". The seam is real and pluggable. What the framework does not ship is a policy to
+put in it: there are no documented validation layers or interception points between
+inference output and motor commands. This is that policy.
+
 ## Status
 
 - `sort_gate.py` — scope derivation and the allow/hold decision. Done, tested.
-- Wiring to the real arm and to Anomalib's output — next.
+- `gated_source.py` — the ActionSource wrapper. Done, tested against a stub policy.
+- Wiring `evidence` to Anomalib's real output, and running it on the arm — next.
