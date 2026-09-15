@@ -68,7 +68,12 @@ PLATE_ITEMS = {"serve_plate", "serve_food", "serve_shrimp", "serve_cake"}
 # counting how many objects end up tipped over. Every tighter value (0.050 to 0.078)
 # topples at least one object in at least one order; 0.090 is the only one that ends
 # with nothing tipped either way, worst placement 5.2cm.
-DRINK_SIDE_OFFSET = 0.055
+# How far the glass stands from the plate at a setting. This is not just "do the two
+# objects overlap": the gripper and its fingers occupy far more room than the plate, so
+# setting a plate down reaches out and knocks over a glass that is merely not-touching.
+# Measured, glass placed first then the plate: at 7.2cm the glass is knocked over by
+# BOTH arms (so no arm choice can save it), and from 9.5cm out it survives.
+DRINK_SIDE_OFFSET = 0.095
 DRINK_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
 
 
