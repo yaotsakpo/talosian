@@ -34,10 +34,14 @@ class GatedPolicy:
     policy:        the wrapped policy (InferenceModel or anything with select_action).
     evidence:      callable returning the current evidence for the part in hand:
                    {verdict, confidence, calibrated, seen_before}.
-    hold_action:   what to command when an action is withheld. None means "command
-                   nothing", which the caller must treat as "do not move". A caller that
-                   needs a concrete vector (some loops require one) can pass the arm's
-                   current position, so the arm holds station rather than sorting.
+    hold_action:   what to command when an action is withheld. A robot control loop
+                   running at a fixed rate must command SOMETHING every tick, so the
+                   right answer is the arm's current joint positions: it holds station
+                   instead of carrying the part to a bin. This is how Studio itself
+                   handles "no action available": StudioActionSource.update() ends with
+                   `return self._hold_target.copy()`, the pose captured from the robot's
+                   own state. Pass a callable to have it read fresh each time, or None
+                   to return None for callers that can skip a tick.
     on_decision:   optional callback, for the dashboard and the audit record.
     protection_on: False reproduces today's behaviour (the policy's action reaching the
                    motors unchecked) so the difference can be shown, not asserted.
@@ -68,7 +72,11 @@ class GatedPolicy:
         if decision["allowed"]:
             return action
 
-        # Withheld. The part is not carried to a customer bin; it is held for review.
+        # Withheld. The part is not carried to a customer bin; the arm holds station.
+        # A control loop must command something each tick, so "skip the action" means
+        # "command the pose you are already in", not "command nothing".
+        if callable(self._hold_action):
+            return self._hold_action(observation)
         return self._hold_action
 
     def __getattr__(self, name):

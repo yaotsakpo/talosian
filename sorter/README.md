@@ -97,6 +97,97 @@ supplied. This is that policy.
 
 ## Using it
 
+Read from Studio's own backend, not from documentation:
+`application/backend/src/runtime/action_source.py`. `StudioActionSource.update()` ends:
+
+```python
+policy_action = self._policy_action(robot_state, camera_frames, step)
+
+if self._follower_source == "teleop" and leader_action is not None:
+    return leader_action
+if self._follower_source == "policy" and policy_action is not None:
+    return policy_action
+return self._hold_target.copy()          # <- the arm holds station
+```
+
+Two things follow:
+
+1. **The seam is `PolicySource.update(robot_state, camera_frames, step)`.** Whatever it
+   returns becomes the joint command for that tick.
+
+2. **Studio already knows how to hold.** If the policy action is `None`, the runtime
+   commands `_hold_target`, the pose taken from the robot's own state, and the arm stays
+   put. Studio does this itself when a policy errors (`_drop_policy_to_hold`).
+
+So "skip the placement" needs no invention. Returning `None` already means it, and the
+runtime does the safe thing. What is missing from the pipeline is anything that decides
+*whether* an action has earned the right to be sent. That is the gate:
+
+```python
+from gated_source import GatedSource
+
+source = GatedSource(
+    inner=loaded_policy_source,       # what Studio loaded
+    evidence=anomaly_reading,         # the current part's score, see below
+)
+```
+
+`GatedSource` exposes the same `update(...)` and forwards everything else, so Studio
+calls it exactly as it would the original.
+
+## Where the gate sits
+
+```
+camera -> ACT grasps -> Anomalib scores -> [ verdict + confidence ]
+                                                    |
+                                            THE GATE (sort_gate.py)
+                                        derives scope from evidence
+                                                    |
+                            allowed ----------------+---------------- held
+                               |                                        |
+                     SmolVLA places it                     the placement is SKIPPED:
+                       in good / reject                    no sorting motion at all,
+                                                           the reason is recorded
+```
+
+The gate sits between Anomalib and SmolVLA. It does not touch ACT, does not re-run
+perception, and does not make any model more accurate. It decides whether a claim may
+become a motion.
+
+The gate does not re-run perception and does not second-guess the model's opinion. It
+asks a different question: **has this claim earned the authority to move a part into a
+customer bin?** Authority is derived at the boundary, from evidence:
+
+- confidence below the floor
+- the scene does not match training conditions (lighting, camera moved)
+- the part is unlike anything in the training set
+
+Any of those and the verdict is a claim without standing. The part is held, and the arm
+makes no sorting motion, which is the same property the restaurant bridge has: a held
+request queues no motion.
+
+## The demo
+
+One part, one model, one variable:
+
+| | bin | arm moves | why |
+|---|---|---|---|
+| protection **off** | good | yes | acting on the model's claim unchecked |
+| protection **on** | review | **no** | confidence 0.62 below floor; scene does not match training |
+
+With the gate off, a defective part the detector was fooled about goes to the customer.
+With it on, the same part is stopped, and the reason is legible.
+
+## Why this is the right place for it
+
+Intel's own Physical AI Studio documentation describes "future-ready hooks for action
+clamps and emergency stops, guarding against unsafe movements caused by model errors or
+unexpected inputs". The hook is acknowledged; the policy that belongs in it is not
+supplied. This is that policy.
+
+
+## Using it
+
 One line changes in whatever script runs the trained policy on the arm.
 
 **Before**, the policy's action goes straight to the motors:
@@ -254,10 +345,12 @@ commands. This is that policy.
 ## Status
 
 - `sort_gate.py` — scope derivation and the allow/hold decision. Done, tested.
-- `gated_policy.py` — wrapper for **Physical AI Studio's** `select_action` loop. Done,
-  tested against a stub policy. This is the one to use with Studio.
-- `gated_source.py` — the same gate shaped for the separate OpenVINO Physical AI
-  runtime's `action_source` seam.
+- `gated_source.py` — wraps Studio's `PolicySource`, matching the real
+  `update(robot_state, camera_frames, step)` interface read from Studio's backend.
+  Tested against a stub source. **This is the one to use.**
+- `gated_policy.py` — an earlier version written against a `select_action(obs)` loop
+  described in a blog post. Studio does not work that way; kept only for a project that
+  drives a policy directly rather than through Studio's runtime.
 - Not yet done, and both need the trained model to exist first:
   - `evidence` is not wired to Anomalib. It expects
     `{verdict, confidence, calibrated, seen_before}`; the real output format has to be
