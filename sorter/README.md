@@ -71,21 +71,42 @@ that seam and ships no policy for it.
 ## Where the gate sits
 
 ```
-camera -> ACT grasps -> Anomalib scores -> [ verdict + confidence ]
-                                                    |
-                                            THE GATE (sort_gate.py)
-                                        derives scope from evidence
-                                                    |
-                            allowed ----------------+---------------- held
-                               |                                        |
-                     SmolVLA places it                     the placement is SKIPPED:
-                       in good / reject                    no sorting motion at all,
-                                                           the reason is recorded
+ACT grasps the cube          <- never gated: picking it up to look at it
+        |                       should happen whatever the confidence
+Anomalib scores it
+        |
+   THE GATE  (only the placement is governed)
+        |
+   allowed --+-- held
+      |          |
+ SmolVLA      the cube goes BACK to the input area,
+ places it    not into either bin
+ blue / pink
 ```
 
-The gate sits between Anomalib and SmolVLA. It does not touch ACT, does not re-run
-perception, and does not make any model more accurate. It decides whether a claim may
-become a motion.
+**Only the third step is governed.** The gate does not touch ACT, does not re-run
+perception, and does not make any model more accurate. It decides whether a judgement
+may become a placement.
+
+Studio holds one policy at a time and switches phase with a task string
+(`StartTaskCommand` -> `policy.set_task(task)`), so the gate reads the task to tell a
+grasp from a placement.
+
+### Where a held cube goes
+
+Anomalib decides *after* the arm already has the cube, so "hold" cannot mean "freeze":
+the arm is holding something and must put it somewhere. There are two bins, blue for
+good and pink for bad, and neither is right for a cube nobody is sure about. So a held
+cube is **put back where it came from**.
+
+That has a useful property. The arm works through the pile taking only what it is sure
+about, and what remains in the input area is exactly the set the model could not commit
+to. The gate's output is a physical pile, and its size measures where the model lacks
+competence on this batch.
+
+It measures *uncertainty*, not defectiveness: the residue mixes genuinely ambiguous
+defects with good cubes that photographed badly. The honest claim is "the arm sorted
+what it was sure about and left the rest", not "everything left is defective".
 
 The gate does not re-run perception and does not second-guess the model's opinion. It
 asks a different question: **has this claim earned the authority to move a part into a
@@ -162,21 +183,42 @@ calls it exactly as it would the original.
 ## Where the gate sits
 
 ```
-camera -> ACT grasps -> Anomalib scores -> [ verdict + confidence ]
-                                                    |
-                                            THE GATE (sort_gate.py)
-                                        derives scope from evidence
-                                                    |
-                            allowed ----------------+---------------- held
-                               |                                        |
-                     SmolVLA places it                     the placement is SKIPPED:
-                       in good / reject                    no sorting motion at all,
-                                                           the reason is recorded
+ACT grasps the cube          <- never gated: picking it up to look at it
+        |                       should happen whatever the confidence
+Anomalib scores it
+        |
+   THE GATE  (only the placement is governed)
+        |
+   allowed --+-- held
+      |          |
+ SmolVLA      the cube goes BACK to the input area,
+ places it    not into either bin
+ blue / pink
 ```
 
-The gate sits between Anomalib and SmolVLA. It does not touch ACT, does not re-run
-perception, and does not make any model more accurate. It decides whether a claim may
-become a motion.
+**Only the third step is governed.** The gate does not touch ACT, does not re-run
+perception, and does not make any model more accurate. It decides whether a judgement
+may become a placement.
+
+Studio holds one policy at a time and switches phase with a task string
+(`StartTaskCommand` -> `policy.set_task(task)`), so the gate reads the task to tell a
+grasp from a placement.
+
+### Where a held cube goes
+
+Anomalib decides *after* the arm already has the cube, so "hold" cannot mean "freeze":
+the arm is holding something and must put it somewhere. There are two bins, blue for
+good and pink for bad, and neither is right for a cube nobody is sure about. So a held
+cube is **put back where it came from**.
+
+That has a useful property. The arm works through the pile taking only what it is sure
+about, and what remains in the input area is exactly the set the model could not commit
+to. The gate's output is a physical pile, and its size measures where the model lacks
+competence on this batch.
+
+It measures *uncertainty*, not defectiveness: the residue mixes genuinely ambiguous
+defects with good cubes that photographed badly. The honest claim is "the arm sorted
+what it was sure about and left the rest", not "everything left is defective".
 
 The gate does not re-run perception and does not second-guess the model's opinion. It
 asks a different question: **has this claim earned the authority to move a part into a
