@@ -179,14 +179,27 @@ CAN_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
 # and EITHER arm can fetch from EITHER pile (both are within measured reach of both
 # mounts). That is what lets the driver pick, per request, whichever arm can do the job
 # without its path running through something already on the table.
+# Both piles sit well clear of the arm mounts (16cm+, measured) so a moving arm does not
+# shove the stacks around, while staying within reach of BOTH arms so either can fetch
+# from either pile. Cans on the left, plates on the right, as a table is actually laid.
+# Both piles sit clear of the arm mounts (measured) so a moving arm does not shove the
+# stacks around, while staying within reach of BOTH arms so either can fetch from either
+# pile. Cans on the left, plates on the right, as a table is actually laid. The two drink
+# rows share an x and are separated in y by more than the row's own span, so the rows
+# never overlap and the arm never sweeps across one to reach the other.
+# Both piles sit clear of the arm mounts (14.5cm, up from 9.4cm) so a moving arm no
+# longer shoves the stacks around, while staying within reach of BOTH arms so either can
+# fetch from either pile. Cans on the left, plates on the right, as a table is laid.
+# One can of each drink: a second can per row cannot be placed without either crowding a
+# mount again or falling outside the other arm's reach (searched, no solution exists).
 PILE = {
-    "wine":  (-0.040, 0.000),
-    "water": (-0.040, 0.080),
+    "water": (-0.045, 0.090),
+    "wine":  (-0.045, 0.150),
 }
 # Two cans per drink, spaced 0.04 apart in y, keeps every can on one of the measured good
 # pick spots (y = 0.00, 0.04, 0.08, 0.12 work; 0.06 and 0.12+ do not). Three per row would
 # push the last can out of the band, where the pick fails.
-PILE_COUNT = 2              # two of each drink per arm: enough for the seats it serves
+PILE_COUNT = 1              # two of each drink per arm: enough for the seats it serves
 
 # The PLATE pile: a stack of plates in the middle, the source the servers take a plate
 # from when setting a place. Plates stack flat on each other, which is how plates pile.
@@ -195,7 +208,7 @@ PLATE_HALF_H = 0.005
 PLATE_RGBA = [0.93, 0.93, 0.95, 1.0]
 # Clear of every placemat (they used to sit ON two of the settings) and clear of the
 # can rows. Measured: plates land within 5.7cm of the setting from here, flat.
-PLATE_PILE = (0.090, 0.060)
+PLATE_PILE = (0.060, 0.130)
 PLATE_COUNT = 4             # plates per stack: one per guest that arm serves
 # centre-to-centre spacing of adjacent cans. The gripper jaws (pre-rolled) sweep wider
 # than a can, so cans sit apart in a SINGLE ROW and are picked outer-first, so the can
