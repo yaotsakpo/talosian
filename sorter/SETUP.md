@@ -72,25 +72,52 @@ This is **separate from the teleoperation demos**. Your teammates are recording 
 movements for ACT and SmolVLA; nobody is necessarily photographing cubes for defect
 detection. Someone has to.
 
-Make two folders and fill them:
+### Find the camera
 
+```bash
+conda activate hack_lerobot
+lerobot-find-cameras
 ```
-cubes/
-  good/       photos of good cubes
-  defect/     photos of defective cubes
+
+That lists the cameras with their indices. Note the index of the one **pointed at the
+cube area**, since that is the one the model must learn from.
+
+### Take the photos
+
+```bash
+conda activate hack_physica_ai
+cd talosian
+
+# good cubes: press SPACE for each one, Q when done
+python sorter/capture.py --label good --camera 0
+
+# defective cubes
+python sorter/capture.py --label defect --camera 0
 ```
 
-Practical notes, from Intel's own guidance on this challenge:
+A preview window opens with a counter. Put a cube down, press SPACE, swap it, press
+SPACE again. The script writes into `cubes/good/` and `cubes/defect/`, numbering files
+so you can stop and come back without overwriting anything.
 
-- **Keep it consistent.** Same camera angle, same distance, same lighting, same
-  background for every photo. Otherwise the model learns the lighting instead of the
-  defect.
-- **20 to 30 photos of good cubes** is enough to start with. More is better.
-- **10 or so defective cubes**, with the defect visible from the camera angle you will
-  actually use.
-- Use the **same camera** that will watch the arm during the demo.
+Hands-free alternative, if you would rather move cubes than reach for the keyboard:
 
----
+```bash
+python sorter/capture.py --label good --camera 0 --auto 30 --delay 2
+```
+
+That takes 30 photos, two seconds apart. Move or swap the cube between shots.
+
+### What actually matters
+
+- **Consistency beats quantity.** Same camera, same angle, same distance, same lighting,
+  same background, every shot. A model trained on photos that vary in lighting learns
+  the lighting, not the defect, and will call a good cube anomalous because a cloud went
+  past.
+- **Use the same camera** that will watch the arm during the demo.
+- **20 to 30 good cubes** to start with. The script tells you if you are short.
+- **5 to 10 defective cubes**, with the defect **visible from the camera angle you will
+  actually use**. A chip on the underside teaches the model nothing.
+- Vary the cube's position and rotation within the frame, but not the camera.
 
 ## 5. Train the anomaly model
 
