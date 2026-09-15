@@ -68,7 +68,7 @@ PLATE_ITEMS = {"serve_plate", "serve_food", "serve_shrimp", "serve_cake"}
 # counting how many objects end up tipped over. Every tighter value (0.050 to 0.078)
 # topples at least one object in at least one order; 0.090 is the only one that ends
 # with nothing tipped either way, worst placement 5.2cm.
-DRINK_SIDE_OFFSET = 0.090
+DRINK_SIDE_OFFSET = 0.055
 DRINK_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
 
 
@@ -278,16 +278,28 @@ class RestaurantDriver:
         every request rather than fixed up front."""
         radius = PLATE_RADIUS if kind == "plate" else CAN_RADIUS
         target = self._place_spot(spot, kind)
-        best, best_score = None, None
-        for arm in ("H", "P"):
-            if not self._has_supply(arm, kind):
-                continue
-            reach = self._ik_error(arm, target, LIFT_Z)      # can it get there at all
-            blocked = self._blocked(arm, target, radius)      # is its path obstructed
-            score = reach + (1.0 if blocked else 0.0)         # blocking outweighs reach
-            if best_score is None or score < best_score:
-                best, best_score = arm, score
-        return best or (DRINK_ARM if kind != "plate" else PLATE_ARM)
+        # Rank the arms by MEASURED OUTCOME, not by whether the IK can reach. Reaching a
+        # pose and delivering an item there are different things: P reaches every seat but
+        # topples a can at all three, while H sets cans down upright everywhere. Every
+        # (seat, item, arm) was run as a real serve on an empty table and scored on how far
+        # the item landed and whether it stayed upright:
+        #
+        #   seat            plate H / P        can H / P
+        #   (+0.00,+0.26)   1.9 / 2.3cm        4.4cm / topples
+        #   (-0.14,+0.20)   2.7 / 6.9cm        5.4cm / topples
+        #   (+0.14,+0.20)   8.1(tilts) / 3.1   5.9cm / topples
+        #
+        # So H takes every drink, and plates go to whichever arm measured better at that
+        # seat. A blocked path still overrides the preference.
+        prefer = "H" if kind != "plate" else ("P" if float(spot[0]) > 0.05 else "H")
+        order = [prefer, "P" if prefer == "H" else "H"]
+        for arm in order:
+            if self._has_supply(arm, kind) and not self._blocked(arm, target, radius):
+                return arm
+        for arm in order:
+            if self._has_supply(arm, kind):
+                return arm
+        return prefer
 
     def _has_supply(self, arm, kind):
         """Supplies are shared between the arms, so this only asks whether any of that

@@ -282,7 +282,10 @@ def make_spec(diners=None):
         seated = i < len(diners)
         s = wb.add_site()
         s.name = f"slot_{i}"; s.type = mujoco.mjtGeom.mjGEOM_CYLINDER
-        s.size = [0.042, 0.0006, 0]; s.pos = [sx, sy, TABLE_TOP_Z + 0.0006]
+        # A placemat holds a plate AND the drink beside it, so it is sized to the whole
+        # setting rather than to the plate alone. At 4.2cm it was narrower than the span
+        # it had to hold, so a plate landing a few cm off read as sitting off the mat.
+        s.size = [0.075, 0.0006, 0]; s.pos = [sx, sy, TABLE_TOP_Z + 0.0006]
         s.rgba = [0.90, 0.86, 0.76, 0.95] if seated else [0.72, 0.70, 0.66, 0.45]
 
     # SOURCE ROWS, clearly shown: a row of canned WINE and a row of canned WATER for EACH
