@@ -245,6 +245,20 @@ def make_spec(diners=None):
     diners = diners or list(DEFAULT_DINERS)
     spec = mujoco.MjSpec()
     spec.modelname = "talosian-restaurant"
+    # SOLVER SETTINGS. These are not cosmetic: with MuJoCo's defaults (Euler integrator,
+    # impratio 1) a can that has been set down upright on the table, touching nothing but
+    # the table, slowly sinks into the surface and topples over on its own. That was the
+    # real cause of "the glass falls", not where the glass was placed, and it is why
+    # moving the glass around never fixed it.
+    #
+    # The SO-101 model ships with implicitfast and impratio 10 for exactly this reason,
+    # but an attached child's options are ignored in favour of the parent's, so the scene
+    # has to ask for them itself.
+    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    spec.option.impratio = 10.0
+    spec.option.cone = mujoco.mjtCone.mjCONE_ELLIPTIC
+    spec.option.iterations = 100
+    spec.option.ls_iterations = 50
     wb = spec.worldbody
     wb.add_light(pos=[0, 0, 3.5], dir=[0, 0, -1])
     wb.add_light(pos=[0.0, -0.6, 1.2], dir=[0, 0.4, -1], diffuse=[0.4, 0.4, 0.4])
