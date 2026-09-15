@@ -270,6 +270,44 @@ the motors unchecked, so the contrast can be demonstrated rather than asserted:
 
 Same part, same model, same hardware. One variable.
 
+## Does it actually help? (the experiment)
+
+A trust gate cannot make a model more accurate, so it cannot reduce both kinds of error
+for free. What it does is convert some errors into holds. Whether that trade is worth it
+is a judgement about cost, and `experiment.py` produces the numbers to judge with.
+
+It needs one thing: **(score, truth) pairs from a held-out test set**, the anomaly score
+the model gave each part and whether that part was really good or defective. No robot,
+no Studio, no retraining.
+
+```bash
+python -c "
+import sys; sys.path.insert(0,'sorter')
+from experiment import sweep
+sweep(load_my_scores(), accept_at=0.5)
+"
+```
+
+On a synthetic distribution with a realistic overlap (400 good, 100 defective):
+
+```
+  floor  defects shipped  good scrapped    held  held %
+   0.00               16             54       0    0.0%     <- today: two bins
+   0.10                8             40      53   10.6%
+   0.20                4             26     107   21.4%
+   0.40                0             11     228   45.6%
+```
+
+Read it as a tradeoff, not a win. A floor of 0.10 halves the defects reaching the
+customer for a 10% hold rate. A floor of 0.40 stops them entirely but sends nearly half
+the parts to a human. **No setting is simply best**: it depends on what a shipped defect
+costs relative to a person's time, and a missed defect is
+[usually the more expensive error](https://www.unitxlabs.com/blog/what-is-final-acceptance-fa-and-false-rejection-fr-in-ai-inspection/)
+because everything later built on it inherits the fault.
+
+The number worth reporting for this challenge is the same table run on **the real
+model's scores**, which is why the test set has to keep scores and not just labels.
+
 ## How it attaches to Physical AI Studio
 
 Studio runs a trained policy with a plain loop:
