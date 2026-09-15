@@ -1,5 +1,8 @@
 # Talosian for the Intel on-site challenge
 
+> **Just want to run it?** → [SETUP.md](SETUP.md) is the step-by-step, including what to
+> install, how to photograph the cubes, and what each command should print.
+
 **Challenge:** sort parts with anomalies using Intel edge compute. A camera sees a
 part, an anomaly model judges it good or defective, an arm places it in the matching
 bin.
