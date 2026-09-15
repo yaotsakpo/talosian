@@ -446,6 +446,38 @@ inputs". The seam is real. What is not shipped is a policy to put in it: there a
 documented validation layers or interception points between inference output and motor
 commands. This is that policy.
 
+## Anomalib is not in Studio
+
+Worth knowing before planning around it: **Physical AI Studio contains no anomaly
+detection.** Grepping its source for "anomalib" returns nothing. Studio does imitation
+learning, ACT and SmolVLA, and that is all.
+
+Intel's setup page lists them as separate installs sitting alongside each other
+(Physical AI Studio, OpenVINO 2026.3, **Anomalib v2.6.0**, LeRobot), and the challenge
+slide shows three separate stages: ACT, **Anomaly Lib**, SmolVLA. The anomaly step is
+something you run yourself.
+
+`anomaly.py` covers it:
+
+```bash
+# photograph cubes into two folders, then train (minutes, on CPU)
+#   cubes/good/     photos of good cubes
+#   cubes/defect/   photos of defective cubes
+python sorter/anomaly.py train --data cubes/
+```
+
+It trains with Padim by default, which needs no defective examples to learn from and
+suits a small hackathon set, then exports for OpenVINO. During the demo:
+
+```python
+reader = AnomalyReader("results/.../weights/openvino/model.xml")
+GatedSource(inner=policy, evidence=lambda: reader.read(current_frame))
+```
+
+Anomalib's prediction carries `pred_score` and `pred_label`. The reader turns the score
+into a distance from the decision boundary, so a cube scoring right at the threshold is
+maximally unsure and one far from it is confident. That distance is what the gate reads.
+
 ## How this actually runs (no Studio patch)
 
 Studio's plugin system registers **robots only** (`application/backend/src/plugins`:
