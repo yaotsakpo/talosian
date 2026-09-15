@@ -209,6 +209,7 @@ PLATE_RGBA = [0.93, 0.93, 0.95, 1.0]
 # Clear of every placemat (they used to sit ON two of the settings) and clear of the
 # can rows. Measured: plates land within 5.7cm of the setting from here, flat.
 PLATE_PILE = (0.060, 0.130)
+CAN_RESERVE = 6   # spare can bodies per drink, parked off-table until needed
 PLATE_COUNT = 4             # plates per stack: one per guest that arm serves
 # centre-to-centre spacing of adjacent cans. The gripper jaws (pre-rolled) sweep wider
 # than a can, so cans sit apart in a SINGLE ROW and are picked outer-first, so the can
@@ -285,7 +286,7 @@ def make_spec(diners=None):
         # A placemat holds a plate AND the drink beside it, so it is sized to the whole
         # setting rather than to the plate alone. At 4.2cm it was narrower than the span
         # it had to hold, so a plate landing a few cm off read as sitting off the mat.
-        s.size = [0.125, 0.0006, 0]; s.pos = [sx, sy, TABLE_TOP_Z + 0.0006]
+        s.size = [0.165, 0.0006, 0]; s.pos = [sx, sy, TABLE_TOP_Z + 0.0006]
         s.rgba = [0.90, 0.86, 0.76, 0.95] if seated else [0.72, 0.70, 0.66, 0.45]
 
     # SOURCE ROWS, clearly shown: a row of canned WINE and a row of canned WATER for EACH
@@ -295,8 +296,13 @@ def make_spec(diners=None):
     # matching row and carries it to a seat, where it stays, so the row visibly shrinks.
     # Body names: {drink}_{arm}_{k}. These are the ONLY carriable bodies.
     for drink in PILE:
-            for k in range(PILE_COUNT):
-                sx, sy = can_slot_xy(drink, k)
+            for k in range(PILE_COUNT + CAN_RESERVE):
+                if k < PILE_COUNT:
+                    sx, sy = can_slot_xy(drink, k)
+                else:
+                    # reserve stock: parked well off the table, brought to the pile by the
+                    # driver as each can is served, so the bar never runs dry.
+                    sx, sy = (2.0 + 0.1 * k, -2.0 if drink == "wine" else -2.4)
                 nm = f"{drink}_{k}"
                 b = wb.add_body(); b.name = nm
                 b.pos = [sx, sy, can_z(k)]; b.add_freejoint()

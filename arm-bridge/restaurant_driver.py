@@ -29,7 +29,7 @@ import numpy as np
 import mujoco
 
 from scene_restaurant import (
-    PLATE_PILE,
+    PLATE_PILE, can_slot_xy, CAN_RESERVE,
     JOINTS, TABLE_TOP_Z, CAN_HALF_H, CAN_RADIUS, PILE_COUNT, PILE, ARM_MOUNT,
     PLATE_HALF_H, PLATE_COUNT, PLATE_RADIUS, TABLE_CENTER,
     diner_spots, arm_for_spot,
@@ -71,9 +71,10 @@ PLATE_ITEMS = {"serve_plate", "serve_food", "serve_shrimp", "serve_cake"}
 # How far the glass stands from the plate at a setting. This is not just "do the two
 # objects overlap": the gripper and its fingers occupy far more room than the plate, so
 # setting a plate down reaches out and knocks over a glass that is merely not-touching.
-# Measured, glass placed first then the plate: at 7.2cm the glass is knocked over by
-# BOTH arms (so no arm choice can save it), and from 9.5cm out it survives.
-DRINK_SIDE_OFFSET = 0.095
+# Measured, glass placed first then the plate, at EVERY seat: 7.2cm is knocked over by
+# both arms, 9.5 and 11.5cm still fail at the right-hand seat (whose plate is laid by the
+# other arm, which swings differently), and 13.5cm survives at all three.
+DRINK_SIDE_OFFSET = 0.135
 DRINK_RGBA = {"wine": [0.50, 0.05, 0.10, 1.0], "water": [0.30, 0.55, 0.90, 1.0]}
 
 
@@ -92,7 +93,7 @@ class RestaurantDriver:
         self.weld = {a: mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_EQUALITY, f"grasp_{a}")
                      for a in ("H", "P")}
         # which cans are still available in each arm's row of each drink (True = on table)
-        self.available = {drink: [True] * PILE_COUNT for drink in PILE}
+        self.available = {drink: [True] + [False] * CAN_RESERVE for drink in PILE}
         # which plates are still on each arm's stack (True = still stacked)
         self.plates_left = [True] * PLATE_COUNT
         # which body was delivered to which diner, per kind (for served_ok)
@@ -214,6 +215,54 @@ class RestaurantDriver:
             yield from self._reach(arm, [tx, ty, rest_z], 0.4, fingertip=True, roll=roll)
             if self._at_table(arm, rest_z):
                 return
+
+    def _restock_body(self, drink, j, slot):
+        """Move reserve can `j` onto pile slot `slot` and mark it available."""
+        bid = self._body(f"{drink}_{j}")
+        jadr = self.model.body_jntadr[bid]
+        qadr = self.model.jnt_qposadr[jadr]
+        vadr = self.model.jnt_dofadr[jadr]
+        x, y = can_slot_xy(drink, slot)
+        self.data.qpos[qadr:qadr+3] = [x, y, TABLE_TOP_Z + CAN_HALF_H]
+        self.data.qpos[qadr+3:qadr+7] = [1, 0, 0, 0]
+        self.data.qvel[vadr:vadr+6] = 0
+        mujoco.mj_forward(self.model, self.data)
+        self.available[drink][j] = True
+
+    def _restock(self, drink, k):
+        """Put a fresh can back on the pile after one is served.
+
+        The table has physical room for only one can of each drink beside the arms (a
+        second one either crowds an arm mount, which makes the arm shove the pile around,
+        or falls outside the other arm's reach). Rather than let the bar run dry after one
+        guest, the served can is recycled: once it has been delivered and the arm has gone
+        home, the body is returned to its slot on the pile, standing upright, and marked
+        available again. A guest keeps the drink in front of them; what returns to the pile
+        is the next can from the crate. This keeps the supply independent of the table
+        geometry, so seats can be added without re-solving the layout."""
+        bid = self._body(f"{drink}_{k}")
+        jadr = self.model.body_jntadr[bid]
+        qadr = self.model.jnt_qposadr[jadr]
+        vadr = self.model.jnt_dofadr[jadr]
+        x, y = can_slot_xy(drink, k)
+        self.data.qpos[qadr:qadr+3] = [x, y, TABLE_TOP_Z + CAN_HALF_H]
+        self.data.qpos[qadr+3:qadr+7] = [1, 0, 0, 0]
+        self.data.qvel[vadr:vadr+6] = 0          # drop any motion it had
+        mujoco.mj_forward(self.model, self.data)
+        self.available[drink][k] = True
+
+    def _restock_after(self, drink, k, delivered_body):
+        """Bring the next can out of the crate. The delivered can stays in front of the
+        guest, so a RESERVE body (parked off-table at build time) is moved onto the now
+        empty pile slot and marked available. Without this the bar runs dry after one
+        guest, because the table has physical room for only one can of each drink."""
+        for j in range(len(self.available[drink])):
+            if j == k or self.available[drink][j]:
+                continue
+            if f"{drink}_{j}" in self.delivered.values():
+                continue                      # already in front of a guest
+            self._restock_body(drink, j, k)
+            return
 
     def _release(self, arm):
         self.data.eq_active[self.weld[arm]] = 0
@@ -362,6 +411,9 @@ class RestaurantDriver:
             yield from self._serve_can(arm, body_name, pick_xy, self._place_spot(spot, "can"))
             self.available[drink][k] = False
             self.delivered[diner] = body_name
+            # The delivered can stays with the guest. Bring the next one out of the crate
+            # so the bar is not dry for the following guest (see _restock).
+            self._restock_after(drink, k, body_name)
             return
         if item in PLATE_ITEMS:
             # If this guest has a drink on order that has not been placed yet, lay the
@@ -375,6 +427,7 @@ class RestaurantDriver:
                     bn, pk, pxy = pick
                     yield from self._serve_can(arm, bn, pxy, self._place_spot(spot, "can"))
                     self.available[pdrink][pk] = False
+                    self._restock_after(pdrink, pk, bn)
                     self.delivered[diner] = bn
             picked = self._pick_plate(arm)
             if picked is None:
