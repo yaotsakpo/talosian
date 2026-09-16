@@ -138,6 +138,52 @@ in step 7.
 
 ---
 
+## 5b. Check the model actually works
+
+Studio cannot open or test this model: it has no anomaly detection in it at all. So use
+this instead.
+
+```bash
+# find what training produced
+python sorter/check_model.py --find
+
+# score every image and write the CSV the next step needs
+python sorter/check_model.py --model <path from --find> --data cubes/ --csv scores.csv
+```
+
+You get something like:
+
+```
+scored 42 images
+
+  good cubes    n= 30  scores 0.081 to 0.412  (average 0.203)
+  defective     n= 12  scores 0.388 to 0.914  (average 0.664)
+
+  The classes OVERLAP: 5 of 42 images fall in the region where good and
+  defective scores mix.
+```
+
+**This is the moment to find out whether the model is any good**, before the demo rather
+than during it:
+
+- **Clear separation** (every defective cube scoring above every good one) means the
+  model works and any threshold in the gap sorts perfectly.
+- **Some overlap** is normal and is exactly what the gate is for: those are the cubes a
+  two-bin threshold has to guess at.
+- **Total overlap**, with both classes spread across the same range, means the model has
+  not learned the defect. Usually that means the photos varied in something other than
+  the defect (lighting, angle, distance), or there were too few. Retake them rather than
+  proceeding.
+
+To sanity-check a single cube:
+
+```bash
+python sorter/check_model.py --model <path> --image cubes/defect/defect_0000.png
+```
+
+A defective cube should score noticeably higher than a good one. If it does not, the
+model is not usable yet.
+
 ## 6. Set the threshold from real scores
 
 Do not guess this. `CONFIDENCE_FLOOR` in `sort_gate.py` currently says `0.75`, which is
