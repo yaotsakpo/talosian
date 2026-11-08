@@ -203,6 +203,75 @@ class SetupExpert:
         goal = {j: self._ctrl(arm, j) for j in self.act[arm]}
         yield from self._ramp_gen(arm, goal, seconds)
 
+    # ---- physical grasp (no weld, no teleport) -------------------------------
+    # The SO-101 has one FIXED jaw and one MOVING jaw. The IK site is not between
+    # them: the fixed jaw sits ~19 mm to one side. So a real grasp places the
+    # fixed jaw just outside the object's wall, closes the moving jaw onto the far
+    # side, squeezes with the gripper motor, and lifts by friction alone. Nothing
+    # writes the object's pose and no constraint holds it.
+    physical = False
+    GRASP_CLEARANCE = 0.003
+
+    def _fixed_jaw_offset(self, arm):
+        """World XY vector from the IK site to the fixed jaw's tip centroid."""
+        mujoco.mj_forward(self.model, self.data)
+        s = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, f"{arm}_gripperframe")
+        tips = [mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_GEOM, f"{arm}_fixed_jaw_sph_tip{i}") for i in (1, 2, 3)]
+        c = np.mean([self.data.geom_xpos[g] for g in tips], axis=0)
+        return (c - self.data.site_xpos[s])[:2]
+
+    def _object_radius(self, obj):
+        b = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, obj)
+        for i in range(self.model.ngeom):
+            if self.model.geom_bodyid[i] == b:
+                return float(self.model.geom_size[i][0])
+        return 0.02
+
+    def _straddle_target(self, arm, obj_xy, z):
+        """Site target so the fixed jaw stands just outside the object's wall,
+        with the object between the jaws. Two IK passes: the jaw offset depends
+        on the arm's yaw at the pose."""
+        r = self._object_radius(obj_xy[2]) if len(obj_xy) > 2 else 0.02
+        target = np.array([obj_xy[0], obj_xy[1], z])
+        saved = self.data.qpos.copy()
+        for _ in range(2):
+            sol = self.ik[arm].solve(self.data, target, down_axis=self.DOWN_AXIS)
+            for j, v in sol.items():
+                jid = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_JOINT, f"{arm}_{j}")
+                self.data.qpos[self.model.jnt_qposadr[jid]] = math.radians(v)
+            off = self._fixed_jaw_offset(arm)
+            u = -off / max(np.linalg.norm(off), 1e-6)          # fixed jaw -> moving jaw
+            fixed_xy = np.array(obj_xy[:2]) - u * (r + self.GRASP_CLEARANCE)
+            target = np.array([*(fixed_xy - off), z])
+        self.data.qpos[:] = saved
+        mujoco.mj_forward(self.model, self.data)
+        return target
+
+    def _object_offset(self, arm, obj):
+        """Where the held object sits relative to the IK site right now (world XY)."""
+        mujoco.mj_forward(self.model, self.data)
+        s = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_SITE, f"{arm}_gripperframe")
+        b = mujoco.mj_name2id(self.model, mujoco.mjtObj.mjOBJ_BODY, obj)
+        return (self.data.xpos[b] - self.data.site_xpos[s])[:2]
+
+    def _place_physical_gen(self, arm, obj, target_xy, pick_z):
+        px, py = object_xy(self.model, self.data, obj)
+        tx, ty = float(target_xy[0]), float(target_xy[1])
+        pick = self._straddle_target(arm, (px, py, obj), pick_z)
+        yield from self._reach_gen(arm, [pick[0], pick[1], APPROACH_Z], 0.6, grip=GRIP_OPEN, upright=True)
+        yield from self._reach_gen(arm, list(pick), 0.6, upright=True)            # jaws around the glass
+        yield from self._grip_gen(arm, GRIP_CLOSED, 0.5)                          # moving jaw closes
+        yield from self._hold_gen(arm, 0.3)                                       # squeeze settles
+        yield from self._reach_gen(arm, [pick[0], pick[1], LIFT_Z], 0.6, upright=True)  # lift by friction
+        off = self._object_offset(arm, obj)
+        place = [tx - off[0], ty - off[1]]
+        yield from self._reach_gen(arm, [place[0], place[1], LIFT_Z], 0.8, upright=True)
+        yield from self._reach_gen(arm, [place[0], place[1], pick_z + 0.004], 0.6, upright=True)
+        yield from self._hold_gen(arm, 0.2)
+        yield from self._grip_gen(arm, GRIP_OPEN, 0.4)                            # release
+        yield from self._reach_gen(arm, [place[0], place[1], APPROACH_Z], 0.5)
+        yield from self._ramp_gen(arm, {j: math.radians(v) for j, v in HOME.items()}, 0.6)
+
     def place_object_gen(self, arm: str, obj: str, target_xy, pick_z: float):
         """Generator for a full pick-and-place of `obj` with `arm` onto target.
 
@@ -210,6 +279,9 @@ class SetupExpert:
         SETTLE (let the weld lock before moving, so the object cannot be flung) ->
         lift -> hover-over-target -> descend gently -> release -> SETTLE (let the
         object come to rest before the check) -> retreat -> home."""
+        if self.physical:
+            yield from self._place_physical_gen(arm, obj, target_xy, pick_z)
+            return
         px, py = object_xy(self.model, self.data, obj)
         tx, ty = float(target_xy[0]), float(target_xy[1])
         # Entire path stays upright (top-down), so the grasped object never tilts.
