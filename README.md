@@ -66,7 +66,8 @@ Same request, one variable: proof.
 | What | Result |
 |---|---|
 | Learned VLA closed-loop (serve, 10 seeds × 2 commands) | **17/20 (85%)** |
-| Expert skills (serve / table-set / hand-off), each 10 seeds | **10/10** |
+| Serve expert, PHYSICAL grasp (jaws + friction, no weld), 10 seeds: glass lifted, upright, within 4 mm | **10/10** |
+| Table-set / hand-off experts (still weld-based grasp), each 10 seeds | **10/10** |
 | Robustness: expert with lighting/friction/weight/colour randomization | **10/10** |
 | Accuracy under corrupted commands (gate ON vs OFF) | **100% vs 100→0%** as spoof rate rises |
 | Cross-accelerator handoff tamper detection | **caught + blocked** |
@@ -141,6 +142,7 @@ is what the container delivers.
   clean-input accuracy for free, and the low training loss came from the model, not
   the principle. We keep those claims separate.
 - The verified expert reaches 10/10; the learned policy 85%. We report both.
+- Until 2026-11-08 every expert grasp was a weld: the object was moved into the gripper and held by a constraint, not by the jaws. The serve task now uses a physical grasp (fixed jaw beside the glass wall, moving jaw closes, lifted by friction), and its staging zones were moved to where the arms can actually reach the grasp pose; the old zones only succeeded because the weld teleported the glass. Table-set and hand-off still use the weld and are labelled as such above. The robustness and learned-policy numbers were measured on the weld-based expert and have not been re-measured.
 
 ---
 

@@ -41,7 +41,7 @@ JOINTS = ("shoulder_pan", "shoulder_lift", "elbow_flex", "wrist_flex", "wrist_ro
 
 TABLE_TOP_Z = 0.04
 GLASS_HALF_H = 0.03          # same height as the cup (proven graspable)
-GLASS_RADIUS = 0.026
+GLASS_RADIUS = 0.022       # fits between the SO-101 jaws for a real (friction) grasp
 
 # Diner settings (world XY). Sarah on the left (H serves her), Malik on the right
 # (P serves him), so the two arms stay on their own sides.
@@ -58,11 +58,16 @@ WINE_RGBA = [0.45, 0.05, 0.12, 1.0]    # dark red
 # tension and any spurious "an untouched glass sits near Sarah" artifact. H serves
 # Sarah's glass from the center band (measured most reliable for delivery to her
 # far-left setting); P serves Malik's wine from the right. Neither arm crosses.
-_SARAH_X = (-0.05, 0.03)          # H zone, center -> Sarah's glass
-_MALIK_WINE_X = (0.04, 0.07)      # P zone -> Malik's wine. Measured: P delivers
+# Zones re-measured 2026-11-08 for a PHYSICAL grasp (no weld): each zone is
+# where the arm's top-down grasp pose is reachable to <=2 mm (map in
+# /tmp/reach_map.py output, kept in the commit message). The old zones only
+# "worked" because the weld teleported the glass into the hand.
+_SARAH_X = (0.0, 0.02)            # H zone, center -> Sarah's glass
+_MALIK_WINE_X = (0.02, 0.05)      # P zone -> Malik's wine (with _MALIK_Y). Measured: P delivers
                                   # cleanly to Malik from x<=0.07; farther right it
                                   # overshoots. Kept in the reliable band.
-_PICK_Y = (0.00, 0.05)
+_PICK_Y = (0.00, 0.06)            # Sarah's glass (H)
+_MALIK_Y = (0.14, 0.16)           # Malik's wine (P): reachable band for P
 
 
 def _yaw(a: float):
@@ -77,7 +82,7 @@ def sample_start_poses(seed: int):
     rng = np.random.default_rng(seed)
     return {
         "sarah_glass": (rng.uniform(*_SARAH_X), rng.uniform(*_PICK_Y)),
-        "malik_wine_glass": (rng.uniform(*_MALIK_WINE_X), rng.uniform(*_PICK_Y)),
+        "malik_wine_glass": (rng.uniform(*_MALIK_WINE_X), rng.uniform(*_MALIK_Y)),
     }
 
 
@@ -89,6 +94,7 @@ def _glass(wb, name, xy, rgba):
     g = b.add_geom()
     g.name = name + "_geom"; g.type = mujoco.mjtGeom.mjGEOM_CYLINDER
     g.size = [GLASS_RADIUS, GLASS_HALF_H, 0]; g.rgba = rgba; g.mass = 0.05
+    g.friction = [1.5, 0.02, 0.002]; g.condim = 4   # held by friction, not a weld
 
 
 def build_model(seed: int = 0, sarah_drink: str = "water") -> mujoco.MjModel:

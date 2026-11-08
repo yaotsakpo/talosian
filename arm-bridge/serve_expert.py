@@ -36,6 +36,7 @@ PICK_GLASS_Z = PICK_CUP_Z
 
 
 class ServeExpert(SetupExpert):
+    physical = True   # real friction grasp; the glass is never welded or teleported
     """Drink-service expert. Inherits all motion from SetupExpert; overrides the
     task run() to serve the two diners."""
 
