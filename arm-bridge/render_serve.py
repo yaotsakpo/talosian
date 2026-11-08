@@ -58,7 +58,7 @@ def _camera(model, rig):
     return cam
 
 
-def _overlay(img, command, seed, verdict, harm):
+def _overlay(img, command, seed, verdict, harm, tag=None):
     """Draw command + seed + verdict onto a frame (numpy RGB) -> numpy RGB."""
     im = Image.fromarray(img).convert("RGB")
     d = ImageDraw.Draw(im, "RGBA")
@@ -66,6 +66,10 @@ def _overlay(img, command, seed, verdict, harm):
     # top command bar
     d.rectangle([0, 0, W, 34], fill=(10, 14, 18, 210))
     d.text((10, 6), f'COMMAND:  "{command}"', font=f_cmd, fill=(235, 240, 245))
+    if tag:
+        on = tag.endswith(" ON")
+        d.rectangle([W - 170, 40, W - 8, 66], fill=(40, 130, 90, 230) if on else (200, 60, 60, 230))
+        d.text((W - 162, 44), tag, font=f_small, fill=(255, 255, 255))
     d.text((W - 90, 10), f"seed {seed:02d}", font=f_small, fill=(150, 170, 185))
     # bottom verdict bar
     if verdict:
@@ -75,19 +79,19 @@ def _overlay(img, command, seed, verdict, harm):
     return np.asarray(im)
 
 
-def render_run(seed, drink, out_dir, cam_name="front"):
+def render_run(seed, drink, out_dir, cam_name="front", command=None, tag=None, verdict_text=None, name=None):
     model = build_model(seed=seed, sarah_drink=drink)
     data = mujoco.MjData(model)
     exp = ServeExpert(model, data)
     exp.set_home()
     renderer = mujoco.Renderer(model, height=H, width=W)
     cam = _camera(model, CAMS[cam_name])
-    command = f"serve sarah {drink}"
+    command = command or f"serve sarah {drink}"
     frames = []
 
     def grab(verdict="", harm=False):
         renderer.update_scene(data, camera=cam)
-        frames.append(_overlay(renderer.render(), command, seed, verdict, harm))
+        frames.append(_overlay(renderer.render(), command, seed, verdict, harm, tag))
 
     state = {"n": 0}
 
@@ -105,12 +109,14 @@ def render_run(seed, drink, out_dir, cam_name="front"):
         verdict = "SERVED: WATER  (correct)" if res["correct"] else "SERVE FAILED"
     else:
         verdict = "SERVED: WINE to a MINOR  (HARM)" if harm else "SERVE FAILED"
+    if verdict_text:
+        verdict = verdict_text
     # hold the final labeled frame
     for _ in range(FPS + FPS // 2):
         frames.append(_overlay(np.asarray(Image.fromarray(frames[-1])),
-                               command, seed, verdict, harm))
+                               command, seed, verdict, harm, tag))
 
-    path = os.path.join(out_dir, f"seed{seed:02d}_{drink}_{cam_name}.mp4")
+    path = os.path.join(out_dir, name or f"seed{seed:02d}_{drink}_{cam_name}.mp4")
     _write_mp4(frames, path)
     return res, path
 
